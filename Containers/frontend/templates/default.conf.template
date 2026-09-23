@@ -1,0 +1,43 @@
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Resolve upstream service names at request time, not once at startup,
+    # so a DNS hiccup during pod boot (e.g. CoreDNS still starting) doesn't
+    # crash-loop this container. NGINX_LOCAL_RESOLVERS is populated by the
+    # official nginx image's entrypoint from /etc/resolv.conf when
+    # NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 is set (see Dockerfile).
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=5s;
+
+    # Fully-qualified names: nginx's resolver does not apply the
+    # /etc/resolv.conf search-domain expansion that short names rely on.
+    set $log_service log-service.netops.svc.cluster.local;
+    set $anomaly_service anomaly-service.netops.svc.cluster.local;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # /api/logs and /api/logs/:id both work: nginx appends whatever
+    # follows the matched prefix onto the proxy_pass path.
+    location /api/logs {
+        proxy_pass http://$log_service:4000/logs;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /api/analyze {
+        proxy_pass http://$anomaly_service:5001/analyze;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /api/anomalies {
+        proxy_pass http://$anomaly_service:5001/anomalies;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}

@@ -1,0 +1,15 @@
+# ClusterIP only: the database is never reachable from outside the
+# cluster, and is only addressed by log-service/anomaly-service by this
+# service name over the cluster's internal DNS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: netops
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

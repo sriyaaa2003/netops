@@ -1,0 +1,14 @@
+# ClusterIP only: log-service is reachable inside the cluster (from
+# anomaly-service and from nginx) but has no external entry point.
+apiVersion: v1
+kind: Service
+metadata:
+  name: log-service
+  namespace: netops
+spec:
+  type: ClusterIP
+  selector:
+    app: log-service
+  ports:
+    - port: 4000
+      targetPort: 4000

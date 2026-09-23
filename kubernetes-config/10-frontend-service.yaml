@@ -1,0 +1,19 @@
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: netops
+spec:
+  # LoadBalancer, not NodePort: this is the standard way to expose a
+  # Service to the outside world on real cloud Kubernetes (the cloud
+  # provider provisions a real external IP for it). Docker Desktop's
+  # Kubernetes additionally auto-publishes LoadBalancer Services straight
+  # to localhost, so this also gives real external access here with no
+  # extra kubectl port-forward step.
+  type: LoadBalancer
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80

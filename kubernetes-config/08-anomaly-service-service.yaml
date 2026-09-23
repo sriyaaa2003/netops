@@ -1,0 +1,14 @@
+# ClusterIP only: anomaly-service is reachable inside the cluster (from
+# nginx) but has no external entry point.
+apiVersion: v1
+kind: Service
+metadata:
+  name: anomaly-service
+  namespace: netops
+spec:
+  type: ClusterIP
+  selector:
+    app: anomaly-service
+  ports:
+    - port: 5001
+      targetPort: 5001

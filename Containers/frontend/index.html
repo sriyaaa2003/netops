@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NetOps Log Anomaly Console</title>
+<style>
+  body { font-family: sans-serif; max-width: 900px; margin: 20px auto; padding: 0 16px; }
+  section { border: 1px solid #ccc; border-radius: 6px; padding: 15px; margin-bottom: 20px; }
+  textarea { width: 100%; height: 160px; font-family: monospace; font-size: 0.85rem; }
+  button { margin: 8px 8px 0 0; padding: 6px 12px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  .status { margin-top: 8px; font-size: 0.85rem; }
+  .status.ok { color: green; }
+  .status.error { color: red; }
+</style>
+</head>
+<body>
+<h1>NetOps Log Anomaly Console</h1>
+<p>Ingest network test logs, run Isolation Forest anomaly detection per component, and review flagged results.</p>
+
+<section>
+  <h2>1. Ingest Logs</h2>
+  <p>Paste log lines below, or generate a sample batch. Format: <code>TIMESTAMP [SEVERITY] component: message</code></p>
+  <textarea id="log-input"></textarea><br>
+  <button id="btn-generate-submit">Generate &amp; Submit Sample Batch</button>
+  <button id="btn-submit">Submit Pasted Logs</button>
+  <div id="ingest-status" class="status"></div>
+</section>
+
+<section>
+  <h2>2. Run Anomaly Analysis</h2>
+  <button id="btn-analyze">Run Anomaly Analysis</button>
+  <div id="analyze-status" class="status"></div>
+</section>
+
+<section>
+  <h2>3. Flagged Anomalies</h2>
+  <button id="btn-refresh">Refresh</button>
+  <div id="anomalies-container"><p>Loading...</p></div>
+</section>
+
+<script>
+const API = {
+  logs: '/api/logs',
+  analyze: '/api/analyze',
+  anomalies: '/api/anomalies',
+};
+
+const COMPONENTS = ['radio-scheduler', 'rlc-processor', 'mac-scheduler', 'x2-interface', 'core-router'];
+
+const MESSAGES = {
+  INFO: ['periodic health check passed', 'handover completed successfully', 'session established'],
+  WARN: ['latency above baseline threshold', 'retry count elevated'],
+  ERROR: ['connection reset by peer', 'timeout waiting for ack'],
+  CRITICAL: ['component unresponsive, restarting watchdog', 'total loss of synchronization'],
+};
+
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// The chosen faulty component always logs ERROR/CRITICAL so it stands
+// out from its peers in the batch; every other component is mostly INFO.
+function randomSeverity(isFaulty) {
+  if (isFaulty) return Math.random() < 0.5 ? 'CRITICAL' : 'ERROR';
+  const r = Math.random();
+  if (r < 0.8) return 'INFO';
+  if (r < 0.95) return 'WARN';
+  return 'ERROR';
+}
+
+function generateSampleLogs(count = 60) {
+  const faultyComponent = pick(COMPONENTS);
+  const start = Date.now() - count * 4000;
+  const lines = [];
+  for (let i = 0; i < count; i++) {
+    const component = pick(COMPONENTS);
+    const severity = randomSeverity(component === faultyComponent);
+    const message = pick(MESSAGES[severity]);
+    const timestamp = new Date(start + i * 4000).toISOString();
+    lines.push(`${timestamp} [${severity}] ${component}: ${message}`);
+  }
+  return lines.join('\n');
+}
+
+function setStatus(el, message, kind) {
+  el.textContent = message;
+  el.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+async function submitRaw(raw, statusEl) {
+  if (!raw || !raw.trim()) {
+    setStatus(statusEl, 'Nothing to submit.', 'error');
+    return;
+  }
+  setStatus(statusEl, 'Submitting...');
+  try {
+    const res = await fetch(API.logs, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus(statusEl, `Inserted ${data.inserted_count}, skipped ${data.skipped_count}.`, 'ok');
+  } catch (err) {
+    setStatus(statusEl, `Failed: ${err.message}`, 'error');
+  }
+}
+
+const logInput = document.getElementById('log-input');
+const ingestStatus = document.getElementById('ingest-status');
+const analyzeStatus = document.getElementById('analyze-status');
+const anomaliesContainer = document.getElementById('anomalies-container');
+
+document.getElementById('btn-generate-submit').addEventListener('click', async () => {
+  const raw = generateSampleLogs();
+  logInput.value = raw;
+  await submitRaw(raw, ingestStatus);
+});
+
+document.getElementById('btn-submit').addEventListener('click', () => {
+  submitRaw(logInput.value, ingestStatus);
+});
+
+document.getElementById('btn-analyze').addEventListener('click', async () => {
+  setStatus(analyzeStatus, 'Running analysis...');
+  try {
+    const res = await fetch(API.analyze, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const summary = data.message ||
+      `Analyzed ${data.analyzed_logs} logs across ${data.components_considered} components — ${data.flagged.length} flagged.`;
+    setStatus(analyzeStatus, summary, 'ok');
+    await loadAnomalies();
+  } catch (err) {
+    setStatus(analyzeStatus, `Failed: ${err.message}`, 'error');
+  }
+});
+
+document.getElementById('btn-refresh').addEventListener('click', loadAnomalies);
+
+function renderAnomalies(rows) {
+  if (!rows.length) {
+    anomaliesContainer.innerHTML = '<p>No anomalies flagged yet.</p>';
+    return;
+  }
+  const rowsHtml = rows.map((a) => `
+    <tr>
+      <td>${a.component}</td>
+      <td>INFO ${a.info_count}, WARN ${a.warn_count}, ERROR ${a.error_count}, CRITICAL ${a.critical_count}</td>
+      <td>${Number(a.score).toFixed(4)}</td>
+      <td>${a.detected_at ? new Date(a.detected_at).toLocaleString() : ''}</td>
+    </tr>`).join('');
+
+  anomaliesContainer.innerHTML = `
+    <table>
+      <thead><tr><th>Component</th><th>Severity Counts</th><th>Score</th><th>Detected At</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`;
+}
+
+async function loadAnomalies() {
+  try {
+    const res = await fetch(API.anomalies);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    renderAnomalies(data);
+  } catch (err) {
+    anomaliesContainer.innerHTML = `<p>Failed to load anomalies: ${err.message}</p>`;
+  }
+}
+
+loadAnomalies();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Node (log-service)
+node_modules/
+npm-debug.log*
+
+# Python (anomaly-service)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Env files that might carry real secrets locally
+.env
+.env.*
