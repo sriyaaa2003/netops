@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json .
 RUN npm install --omit=dev
 
-COPY server.js .
+COPY server.js parser.js ./
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser

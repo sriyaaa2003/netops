@@ -18,25 +18,26 @@
 </head>
 <body>
 <h1>NetOps Log Anomaly Console</h1>
-<p>Ingest network test logs, run Isolation Forest anomaly detection per component, and review flagged results.</p>
+<p>Replays a real excerpt of the BlueGene/L supercomputer log (Loghub BGL, 4,000 lines), flags anomalous node cards from their severity counts, and compares the flags with the dataset's own alert labels.</p>
 
 <section>
   <h2>1. Ingest Logs</h2>
-  <p>Paste log lines below, or generate a sample batch. Format: <code>TIMESTAMP [SEVERITY] component: message</code></p>
+  <p>Replay the bundled real excerpt, or paste BGL lines (<code>LABEL EPOCH DATE NODE TIME NODE TYPE COMPONENT LEVEL MESSAGE</code>).</p>
   <textarea id="log-input"></textarea><br>
-  <button id="btn-generate-submit">Generate &amp; Submit Sample Batch</button>
+  <button id="btn-generate-submit">Replay real BGL excerpt</button>
   <button id="btn-submit">Submit Pasted Logs</button>
   <div id="ingest-status" class="status"></div>
 </section>
 
 <section>
   <h2>2. Run Anomaly Analysis</h2>
-  <button id="btn-analyze">Run Anomaly Analysis</button>
+  <button id="btn-analyze">Isolation Forest</button>
+  <button id="btn-analyze-rule">Error-count rule</button>
   <div id="analyze-status" class="status"></div>
 </section>
 
 <section>
-  <h2>3. Flagged Anomalies</h2>
+  <h2>3. Flagged node cards</h2>
   <button id="btn-refresh">Refresh</button>
   <div id="anomalies-container"><p>Loading...</p></div>
 </section>
@@ -47,41 +48,6 @@ const API = {
   analyze: '/api/analyze',
   anomalies: '/api/anomalies',
 };
-
-const COMPONENTS = ['radio-scheduler', 'rlc-processor', 'mac-scheduler', 'x2-interface', 'core-router'];
-
-const MESSAGES = {
-  INFO: ['periodic health check passed', 'handover completed successfully', 'session established'],
-  WARN: ['latency above baseline threshold', 'retry count elevated'],
-  ERROR: ['connection reset by peer', 'timeout waiting for ack'],
-  CRITICAL: ['component unresponsive, restarting watchdog', 'total loss of synchronization'],
-};
-
-function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-
-// The chosen faulty component always logs ERROR/CRITICAL so it stands
-// out from its peers in the batch; every other component is mostly INFO.
-function randomSeverity(isFaulty) {
-  if (isFaulty) return Math.random() < 0.5 ? 'CRITICAL' : 'ERROR';
-  const r = Math.random();
-  if (r < 0.8) return 'INFO';
-  if (r < 0.95) return 'WARN';
-  return 'ERROR';
-}
-
-function generateSampleLogs(count = 60) {
-  const faultyComponent = pick(COMPONENTS);
-  const start = Date.now() - count * 4000;
-  const lines = [];
-  for (let i = 0; i < count; i++) {
-    const component = pick(COMPONENTS);
-    const severity = randomSeverity(component === faultyComponent);
-    const message = pick(MESSAGES[severity]);
-    const timestamp = new Date(start + i * 4000).toISOString();
-    lines.push(`${timestamp} [${severity}] ${component}: ${message}`);
-  }
-  return lines.join('\n');
-}
 
 function setStatus(el, message, kind) {
   el.textContent = message;
@@ -114,8 +80,8 @@ const analyzeStatus = document.getElementById('analyze-status');
 const anomaliesContainer = document.getElementById('anomalies-container');
 
 document.getElementById('btn-generate-submit').addEventListener('click', async () => {
-  const raw = generateSampleLogs();
-  logInput.value = raw;
+  const raw = await (await fetch('/bgl_sample.log')).text();
+  logInput.value = raw.split('\n').slice(0, 20).join('\n') + '\n... (4,000 lines)';
   await submitRaw(raw, ingestStatus);
 });
 
@@ -123,20 +89,23 @@ document.getElementById('btn-submit').addEventListener('click', () => {
   submitRaw(logInput.value, ingestStatus);
 });
 
-document.getElementById('btn-analyze').addEventListener('click', async () => {
+async function runAnalysis(detector) {
   setStatus(analyzeStatus, 'Running analysis...');
   try {
-    const res = await fetch(API.analyze, { method: 'POST' });
+    const res = await fetch(API.analyze + '?detector=' + detector, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     const summary = data.message ||
-      `Analyzed ${data.analyzed_logs} logs across ${data.components_considered} components — ${data.flagged.length} flagged.`;
+      `${data.detector}: ${data.analyzed_logs} logs, ${data.components_considered} node cards, ${data.flagged.length} flagged, ${data.flagged_with_alert} of them had a dataset alert label (${data.components_with_alert_label} node cards had one).`;
     setStatus(analyzeStatus, summary, 'ok');
     await loadAnomalies();
   } catch (err) {
     setStatus(analyzeStatus, `Failed: ${err.message}`, 'error');
   }
-});
+}
+
+document.getElementById('btn-analyze').addEventListener('click', () => runAnalysis('isolation_forest'));
+document.getElementById('btn-analyze-rule').addEventListener('click', () => runAnalysis('error_count'));
 
 document.getElementById('btn-refresh').addEventListener('click', loadAnomalies);
 
@@ -148,14 +117,16 @@ function renderAnomalies(rows) {
   const rowsHtml = rows.map((a) => `
     <tr>
       <td>${a.component}</td>
-      <td>INFO ${a.info_count}, WARN ${a.warn_count}, ERROR ${a.error_count}, CRITICAL ${a.critical_count}</td>
+      <td>${Object.entries(a.counts || {}).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(', ')}</td>
+      <td>${a.detector}</td>
+      <td>${a.had_alert ? 'yes' : 'no'}</td>
       <td>${Number(a.score).toFixed(4)}</td>
       <td>${a.detected_at ? new Date(a.detected_at).toLocaleString() : ''}</td>
     </tr>`).join('');
 
   anomaliesContainer.innerHTML = `
     <table>
-      <thead><tr><th>Component</th><th>Severity Counts</th><th>Score</th><th>Detected At</th></tr></thead>
+      <thead><tr><th>Node card</th><th>Severity counts</th><th>Detector</th><th>Alert label in window</th><th>Score</th><th>Detected at</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>`;
 }

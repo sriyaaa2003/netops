@@ -1,24 +1,28 @@
+import hmac
 import os
 import sys
 import time
-from collections import defaultdict
+from datetime import datetime, timedelta
 
-import requests
 import psycopg2
 import psycopg2.extras
-from flask import Flask, jsonify
-from sklearn.ensemble import IsolationForest
+import requests
+from flask import Flask, jsonify, request
+
+from detector import LEVELS, MIN_COMPONENTS, build_features, score
 
 app = Flask(__name__)
 
 LOG_SERVICE_URL = os.environ.get("LOG_SERVICE_URL", "http://log-service:4000")
-SEVERITIES = ["INFO", "WARN", "ERROR", "CRITICAL"]
+DETECTOR = os.environ.get("DETECTOR", "error_count")  # or "isolation_forest"; see eval/ for why error_count is the default
+WINDOW_SECONDS = int(os.environ.get("WINDOW_SECONDS", "3600"))
 
-REQUIRED_DB_ENV = ["DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME"]
-missing_env = [key for key in REQUIRED_DB_ENV if not os.environ.get(key)]
+REQUIRED_ENV = ["DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME", "API_KEY"]
+missing_env = [key for key in REQUIRED_ENV if not os.environ.get(key)]
 if missing_env:
     sys.exit(f"Fatal: missing required environment variable(s): {', '.join(missing_env)}")
 
+API_KEY = os.environ["API_KEY"]
 DB_CONFIG = {
     "host": os.environ["DB_HOST"],
     "port": os.environ["DB_PORT"],
@@ -26,6 +30,15 @@ DB_CONFIG = {
     "password": os.environ["DB_PASSWORD"],
     "dbname": os.environ["DB_NAME"],
 }
+
+
+@app.before_request
+def require_key():
+    if request.path == "/health":
+        return None
+    if not hmac.compare_digest(request.headers.get("X-API-Key", ""), API_KEY):
+        return jsonify({"error": "missing or wrong X-API-Key"}), 401
+    return None
 
 
 def get_conn():
@@ -38,18 +51,20 @@ def init_db(retries=20, delay_seconds=3):
         try:
             conn = get_conn()
             cur = conn.cursor()
-            cur.execute("""
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS anomalies (
                     id SERIAL PRIMARY KEY,
                     component TEXT NOT NULL,
-                    info_count INTEGER,
-                    warn_count INTEGER,
-                    error_count INTEGER,
-                    critical_count INTEGER,
+                    detector TEXT NOT NULL DEFAULT 'isolation_forest',
+                    counts JSONB,
                     score DOUBLE PRECISION,
+                    had_alert BOOLEAN,
+                    window_end TIMESTAMPTZ,
                     detected_at TIMESTAMPTZ DEFAULT now()
                 );
-            """)
+                """
+            )
             conn.commit()
             cur.close()
             conn.close()
@@ -62,74 +77,78 @@ def init_db(retries=20, delay_seconds=3):
     raise RuntimeError(f"Could not connect to database after retries: {last_err}")
 
 
-def fetch_recent_logs(limit=500):
-    resp = requests.get(f"{LOG_SERVICE_URL}/logs", params={"limit": limit}, timeout=5)
+def fetch_window(window_seconds):
+    """Logs from the last `window_seconds` of log time (the newest line defines 'now')."""
+    headers = {"X-API-Key": API_KEY}
+    newest = requests.get(f"{LOG_SERVICE_URL}/logs", params={"limit": 1}, headers=headers, timeout=10)
+    newest.raise_for_status()
+    rows = newest.json()
+    if not rows:
+        return [], None
+    end = datetime.fromisoformat(rows[0]["log_timestamp"].replace("Z", "+00:00"))
+    since = (end - timedelta(seconds=window_seconds)).isoformat()
+    resp = requests.get(
+        f"{LOG_SERVICE_URL}/logs", params={"limit": 20000, "since": since}, headers=headers, timeout=30
+    )
     resp.raise_for_status()
-    return resp.json()
-
-
-def build_feature_table(logs):
-    # One row per component: counts of each severity level in the fetched batch.
-    counts = defaultdict(lambda: {s: 0 for s in SEVERITIES})
-    for entry in logs:
-        comp = entry.get("component", "unknown")
-        sev = entry.get("severity", "INFO")
-        if sev in counts[comp]:
-            counts[comp][sev] += 1
-    components = list(counts.keys())
-    features = [[counts[c][s] for s in SEVERITIES] for c in components]
-    return components, features, counts
+    return resp.json(), end
 
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "service": "anomaly-service"})
+    return jsonify({"status": "ok", "service": "anomaly-service", "detector": DETECTOR})
 
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
+    method = request.args.get("detector", DETECTOR)
+    window = int(request.args.get("window", WINDOW_SECONDS))
     try:
-        logs = fetch_recent_logs()
+        logs, window_end = fetch_window(window)
     except requests.RequestException as exc:
         return jsonify({"error": "could not reach log-service", "detail": str(exc)}), 502
 
-    if len(logs) < 3:
-        return jsonify({"message": "not enough log data yet to analyze", "flagged": []}), 200
+    components, matrix = build_features(logs)
+    if len(components) < MIN_COMPONENTS:
+        return jsonify({"message": f"need logs from at least {MIN_COMPONENTS} components", "flagged": []}), 200
 
-    components, features, counts = build_feature_table(logs)
+    try:
+        scores, mask = score(matrix, method)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
-    # Isolation Forest needs no labeled "normal" data: it isolates points
-    # that are easy to separate from the rest, which tend to be the
-    # components behaving differently from their peers in this batch.
-    model = IsolationForest(contamination="auto", random_state=42)
-    model.fit(features)
-    scores = model.decision_function(features)
-    predictions = model.predict(features)  # -1 = anomaly, 1 = normal
-
+    alerted = {e["component"] for e in logs if e.get("alert_label")}
     flagged = []
     conn = get_conn()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        for comp, score, pred in zip(components, scores, predictions):
-            if pred == -1:
-                c = counts[comp]
-                cur.execute(
-                    """INSERT INTO anomalies
-                       (component, info_count, warn_count, error_count, critical_count, score)
-                       VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
-                    (comp, c["INFO"], c["WARN"], c["ERROR"], c["CRITICAL"], float(score)),
-                )
-                flagged.append(cur.fetchone())
+        for i in range(len(components)):
+            if not mask[i]:
+                continue
+            counts = {s: int(matrix[i][j]) for j, s in enumerate(LEVELS)}
+            cur.execute(
+                """INSERT INTO anomalies (component, detector, counts, score, had_alert, window_end)
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
+                (components[i], method, psycopg2.extras.Json(counts), float(scores[i]), components[i] in alerted, window_end),
+            )
+            flagged.append(cur.fetchone())
         conn.commit()
         cur.close()
     finally:
         conn.close()
 
-    return jsonify({
-        "analyzed_logs": len(logs),
-        "components_considered": len(components),
-        "flagged": flagged,
-    })
+    return jsonify(
+        {
+            "detector": method,
+            "window_seconds": window,
+            "analyzed_logs": len(logs),
+            "components_considered": len(components),
+            "components_with_alert_label": len(alerted),
+            "flagged": flagged,
+            # Alert labels come from the dataset and are used only here, to report how the flags compare.
+            "flagged_with_alert": sum(1 for f in flagged if f["had_alert"]),
+        }
+    )
 
 
 @app.route("/anomalies")
@@ -137,13 +156,12 @@ def list_anomalies():
     conn = get_conn()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT * FROM anomalies ORDER BY detected_at DESC LIMIT 200")
+        cur.execute("SELECT * FROM anomalies ORDER BY detected_at DESC, score DESC LIMIT 200")
         rows = cur.fetchall()
         cur.close()
     finally:
         conn.close()
     return jsonify(rows)
-
 
 
 init_db()

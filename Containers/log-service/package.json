@@ -1,10 +1,11 @@
 {
   "name": "log-service",
   "version": "1.0.0",
-  "description": "Parses raw network test logs into structured records and stores them",
+  "description": "Parses BlueGene/L RAS log lines into structured records and stores them",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^4.19.2",

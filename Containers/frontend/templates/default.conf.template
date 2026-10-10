@@ -2,6 +2,7 @@ server {
     listen 80;
     server_name _;
 
+    client_max_body_size 4m;
     root /usr/share/nginx/html;
     index index.html;
 
@@ -27,17 +28,20 @@ server {
         proxy_pass http://$log_service:4000/logs;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-API-Key ${API_KEY};
     }
 
     location /api/analyze {
         proxy_pass http://$anomaly_service:5001/analyze;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-API-Key ${API_KEY};
     }
 
     location /api/anomalies {
         proxy_pass http://$anomaly_service:5001/anomalies;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-API-Key ${API_KEY};
     }
 }

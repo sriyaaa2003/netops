@@ -46,6 +46,11 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: POSTGRES_DB
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: netops-api-key
+                  key: API_KEY
           resources:
             requests:
               cpu: 100m

@@ -4,8 +4,8 @@ Tested against Docker Desktop's Kubernetes (context `docker-desktop`).
 
  1. Images
 
-Already on Docker Hub: `sriya13/log-service:1.0`, `sriya13/anomaly-service:1.0`,
-`sriya13/frontend:1.0`. Postgres uses the stock `postgres:16-alpine`, no
+The images on Docker Hub (`sriya13/log-service:1.0`, `sriya13/anomaly-service:1.0`, `sriya13/frontend:1.0`) predate the
+real-log version: rebuild and push them (below) before deploying. Postgres uses the stock `postgres:16-alpine`, no
 build needed. 
 
 To rebuild and push:
@@ -32,9 +32,12 @@ kubectl -n netops create secret generic postgres-credentials \
   --from-literal=POSTGRES_USER=netops_user \
   --from-literal=POSTGRES_PASSWORD=<pick-your-own-password> \
   --from-literal=POSTGRES_DB=netops
+
+kubectl -n netops create secret generic netops-api-key   --from-literal=API_KEY=$(openssl rand -hex 24)
 ```
 
-The secret isn't in git, create it once before the next step.
+The secrets aren't in git, create them once before the next step. `netops-api-key` is the shared secret every service checks in the
+`X-API-Key` header; nginx adds it for the browser, so it never reaches the page.
 
 ## 3. Everything else
 

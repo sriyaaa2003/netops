@@ -1,13 +1,15 @@
+const crypto = require('crypto');
 const express = require('express');
 const { Pool } = require('pg');
+const { parseLine } = require('./parser');
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '4mb' }));
 
 const PORT = process.env.PORT || 4000;
 
-const REQUIRED_DB_ENV = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
-const missingEnv = REQUIRED_DB_ENV.filter((key) => !process.env[key]);
+const REQUIRED_ENV = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'API_KEY'];
+const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
 if (missingEnv.length > 0) {
   console.error(`Fatal: missing required environment variable(s): ${missingEnv.join(', ')}`);
   process.exit(1);
@@ -21,21 +23,12 @@ const pool = new Pool({
   database: process.env.DB_NAME,
 });
 
-// Expected line format, similar to what a network node test rig emits:
-// 2026-09-19T10:15:32Z [ERROR] radio-scheduler: RLC retransmission threshold exceeded on cell 12
-const LOG_LINE_RE = /^(\S+)\s+\[(\w+)\]\s+([\w.-]+):\s*(.*)$/;
-
-function parseLine(line) {
-  const match = line.trim().match(LOG_LINE_RE);
-  if (!match) return null;
-  const [, timestamp, severity, component, message] = match;
-  return {
-    timestamp,
-    severity: severity.toUpperCase(),
-    component,
-    message,
-    raw: line,
-  };
+// Shared-secret check on every route except the health probe. The browser never sees the key: nginx adds it.
+const KEY = Buffer.from(process.env.API_KEY);
+function requireKey(req, res, next) {
+  const given = Buffer.from(req.get('X-API-Key') || '');
+  if (given.length === KEY.length && crypto.timingSafeEqual(given, KEY)) return next();
+  return res.status(401).json({ error: 'missing or wrong X-API-Key' });
 }
 
 async function initDb(retries = 20, delayMs = 3000) {
@@ -47,10 +40,15 @@ async function initDb(retries = 20, delayMs = 3000) {
           log_timestamp TIMESTAMPTZ,
           severity TEXT NOT NULL,
           component TEXT NOT NULL,
+          subsystem TEXT,
           message TEXT NOT NULL,
           raw TEXT NOT NULL,
+          alert_label TEXT,
           ingested_at TIMESTAMPTZ DEFAULT now()
         );
+        ALTER TABLE logs ADD COLUMN IF NOT EXISTS subsystem TEXT;
+        ALTER TABLE logs ADD COLUMN IF NOT EXISTS alert_label TEXT;
+        CREATE INDEX IF NOT EXISTS logs_ts_idx ON logs (log_timestamp DESC);
       `);
       console.log('Database ready.');
       return;
@@ -63,37 +61,40 @@ async function initDb(retries = 20, delayMs = 3000) {
 }
 
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'log-service' }));
+app.use(requireKey);
 
-// Accepts either one line or a multi-line dump under "raw".
-// Lines that don't match the expected format are skipped and reported
-// back, rather than silently dropped or rejecting the whole batch.
+// Accepts one line or a multi-line dump under "raw". Lines that are not BGL records are skipped and counted
+// rather than rejecting the whole batch.
 app.post('/logs', async (req, res) => {
   const { raw } = req.body;
   if (!raw || typeof raw !== 'string') {
     return res.status(400).json({ error: 'raw (string) is required' });
   }
 
-  const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
   const parsed = [];
   const skipped = [];
-
-  for (const line of lines) {
+  for (const line of raw.split('\n').map((l) => l.trim()).filter(Boolean)) {
     const entry = parseLine(line);
     if (entry) parsed.push(entry);
     else skipped.push(line);
   }
 
-  const inserted = [];
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (const entry of parsed) {
-      const result = await client.query(
-        `INSERT INTO logs (log_timestamp, severity, component, message, raw)
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [entry.timestamp, entry.severity, entry.component, entry.message, entry.raw]
+    const CHUNK = 500;
+    for (let i = 0; i < parsed.length; i += CHUNK) {
+      const rows = parsed.slice(i, i + CHUNK);
+      const values = [];
+      const tuples = rows.map((e, j) => {
+        values.push(e.timestamp, e.severity, e.component, e.subsystem, e.message, e.raw, e.label);
+        const b = j * 7;
+        return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7})`;
+      });
+      await client.query(
+        `INSERT INTO logs (log_timestamp, severity, component, subsystem, message, raw, alert_label) VALUES ${tuples.join(', ')}`,
+        values
       );
-      inserted.push(result.rows[0]);
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -105,40 +106,40 @@ app.post('/logs', async (req, res) => {
   }
 
   res.status(201).json({
-    inserted_count: inserted.length,
+    inserted_count: parsed.length,
     skipped_count: skipped.length,
-    skipped,
-    entries: inserted,
+    skipped_examples: skipped.slice(0, 5),
   });
 });
 
-// ?limit=, ?severity=, ?component= filters
+// ?limit= (max 20000), ?severity=, ?component=, ?since= and ?until= (ISO timestamps, on the log's own time)
 app.get('/logs', async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit) || 100, 1000);
+  const limit = Math.min(parseInt(req.query.limit) || 100, 20000);
   const conditions = [];
   const values = [];
+  const add = (sql, v) => {
+    values.push(v);
+    conditions.push(sql.replace('?', `$${values.length}`));
+  };
 
-  if (req.query.severity) {
-    values.push(req.query.severity.toUpperCase());
-    conditions.push(`severity = $${values.length}`);
-  }
-  if (req.query.component) {
-    values.push(req.query.component);
-    conditions.push(`component = $${values.length}`);
-  }
+  if (req.query.severity) add('severity = ?', req.query.severity.toUpperCase());
+  if (req.query.component) add('component = ?', req.query.component);
+  if (req.query.since) add('log_timestamp >= ?', req.query.since);
+  if (req.query.until) add('log_timestamp < ?', req.query.until);
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   values.push(limit);
 
   try {
     const result = await pool.query(
-      `SELECT * FROM logs ${where} ORDER BY ingested_at DESC LIMIT $${values.length}`,
+      `SELECT id, log_timestamp, severity, component, subsystem, message, alert_label
+       FROM logs ${where} ORDER BY log_timestamp DESC, id DESC LIMIT $${values.length}`,
       values
     );
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'database error' });
+    res.status(400).json({ error: 'bad query' });
   }
 });
 
@@ -153,11 +154,13 @@ app.get('/logs/:id', async (req, res) => {
   }
 });
 
-initDb()
-  .then(() => {
-    app.listen(PORT, () => console.log(`log-service listening on ${PORT}`));
-  })
-  .catch((err) => {
-    console.error('Fatal: could not start log-service', err);
-    process.exit(1);
-  });
+if (require.main === module) {
+  initDb()
+    .then(() => {
+      app.listen(PORT, () => console.log(`log-service listening on ${PORT}`));
+    })
+    .catch((err) => {
+      console.error('Fatal: could not start log-service', err);
+      process.exit(1);
+    });
+}

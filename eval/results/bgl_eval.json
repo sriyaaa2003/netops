@@ -1,0 +1,134 @@
+{
+  "node card, 10-minute window": {
+    "windows_eligible": 457,
+    "windows_scored": 300,
+    "units_scored": 33209,
+    "positive_rate": 0.5828,
+    "methods": {
+      "random": {
+        "AUROC_pooled": 0.496,
+        "AUROC_per_window_mean": 0.484,
+        "AP": 0.579
+      },
+      "max z-score": {
+        "AUROC_pooled": 0.573,
+        "AUROC_per_window_mean": 0.628,
+        "AP": 0.603
+      },
+      "Isolation Forest (raw counts)": {
+        "AUROC_pooled": 0.466,
+        "AUROC_per_window_mean": 0.598,
+        "AP": 0.55
+      },
+      "Isolation Forest (log counts)": {
+        "AUROC_pooled": 0.471,
+        "AUROC_per_window_mean": 0.601,
+        "AP": 0.553
+      },
+      "error-class count": {
+        "AUROC_pooled": 0.778,
+        "AUROC_per_window_mean": 0.957,
+        "AP": 0.764
+      }
+    }
+  },
+  "node card, 60-minute window": {
+    "windows_eligible": 543,
+    "windows_scored": 300,
+    "units_scored": 45159,
+    "positive_rate": 0.5576,
+    "methods": {
+      "random": {
+        "AUROC_pooled": 0.495,
+        "AUROC_per_window_mean": 0.481,
+        "AP": 0.553
+      },
+      "max z-score": {
+        "AUROC_pooled": 0.579,
+        "AUROC_per_window_mean": 0.665,
+        "AP": 0.571
+      },
+      "Isolation Forest (raw counts)": {
+        "AUROC_pooled": 0.608,
+        "AUROC_per_window_mean": 0.622,
+        "AP": 0.592
+      },
+      "Isolation Forest (log counts)": {
+        "AUROC_pooled": 0.606,
+        "AUROC_per_window_mean": 0.62,
+        "AP": 0.589
+      },
+      "error-class count": {
+        "AUROC_pooled": 0.843,
+        "AUROC_per_window_mean": 0.96,
+        "AP": 0.785
+      }
+    }
+  },
+  "midplane, 10-minute window": {
+    "windows_eligible": 320,
+    "windows_scored": 300,
+    "units_scored": 10676,
+    "positive_rate": 0.3977,
+    "methods": {
+      "random": {
+        "AUROC_pooled": 0.499,
+        "AUROC_per_window_mean": 0.503,
+        "AP": 0.397
+      },
+      "max z-score": {
+        "AUROC_pooled": 0.594,
+        "AUROC_per_window_mean": 0.766,
+        "AP": 0.467
+      },
+      "Isolation Forest (raw counts)": {
+        "AUROC_pooled": 0.554,
+        "AUROC_per_window_mean": 0.724,
+        "AP": 0.459
+      },
+      "Isolation Forest (log counts)": {
+        "AUROC_pooled": 0.54,
+        "AUROC_per_window_mean": 0.719,
+        "AP": 0.456
+      },
+      "error-class count": {
+        "AUROC_pooled": 0.929,
+        "AUROC_per_window_mean": 0.969,
+        "AP": 0.8
+      }
+    }
+  },
+  "midplane, 60-minute window": {
+    "windows_eligible": 423,
+    "windows_scored": 300,
+    "units_scored": 12074,
+    "positive_rate": 0.4003,
+    "methods": {
+      "random": {
+        "AUROC_pooled": 0.501,
+        "AUROC_per_window_mean": 0.511,
+        "AP": 0.403
+      },
+      "max z-score": {
+        "AUROC_pooled": 0.605,
+        "AUROC_per_window_mean": 0.795,
+        "AP": 0.475
+      },
+      "Isolation Forest (raw counts)": {
+        "AUROC_pooled": 0.532,
+        "AUROC_per_window_mean": 0.736,
+        "AP": 0.448
+      },
+      "Isolation Forest (log counts)": {
+        "AUROC_pooled": 0.517,
+        "AUROC_per_window_mean": 0.734,
+        "AP": 0.448
+      },
+      "error-class count": {
+        "AUROC_pooled": 0.904,
+        "AUROC_per_window_mean": 0.955,
+        "AP": 0.753
+      }
+    }
+  }
+}

@@ -2,6 +2,7 @@ FROM nginx:1.27-alpine
 
 COPY templates/default.conf.template /etc/nginx/templates/default.conf.template
 COPY index.html /usr/share/nginx/html/index.html
+COPY bgl_sample.log /usr/share/nginx/html/bgl_sample.log
 
 # Makes the entrypoint export NGINX_LOCAL_RESOLVERS from /etc/resolv.conf,
 # used by the resolver directive in default.conf.template.
