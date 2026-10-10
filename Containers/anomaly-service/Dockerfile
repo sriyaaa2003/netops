@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py detector.py ./
+COPY app.py detector.py features.py model.joblib ./
 
 RUN useradd -m appuser
 USER appuser

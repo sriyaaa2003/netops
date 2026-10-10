@@ -9,12 +9,13 @@ import psycopg2.extras
 import requests
 from flask import Flask, jsonify, request
 
-from detector import LEVELS, MIN_COMPONENTS, build_features, score
+from detector import MIN_COMPONENTS, build_features, score
+from features import LEVELS
 
 app = Flask(__name__)
 
 LOG_SERVICE_URL = os.environ.get("LOG_SERVICE_URL", "http://log-service:4000")
-DETECTOR = os.environ.get("DETECTOR", "error_count")  # or "isolation_forest"; see eval/ for why error_count is the default
+DETECTOR = os.environ.get("DETECTOR", "boosting")  # or "error_count", "isolation_forest"; see eval/ for the comparison
 WINDOW_SECONDS = int(os.environ.get("WINDOW_SECONDS", "3600"))
 
 REQUIRED_ENV = ["DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME", "API_KEY"]

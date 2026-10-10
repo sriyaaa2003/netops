@@ -1,0 +1,16 @@
+{
+  "train_units": 147013,
+  "test_units": 97470,
+  "test_positive_rate": 0.2042987585923874,
+  "threshold": 0.38613088752175145,
+  "flag_precision": 0.6215673141326189,
+  "flag_recall": 0.8854517149600764,
+  "gradient_boosting": {
+    "AUROC": 0.9436770198050316,
+    "AP": 0.7598806031087479
+  },
+  "error_count_rule": {
+    "AUROC": 0.8571446674709109,
+    "AP": 0.5004794826073237
+  }
+}

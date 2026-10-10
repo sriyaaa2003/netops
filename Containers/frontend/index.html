@@ -31,6 +31,7 @@
 
 <section>
   <h2>2. Run Anomaly Analysis</h2>
+  <button id="btn-analyze-boost">Boosting (trained)</button>
   <button id="btn-analyze">Isolation Forest</button>
   <button id="btn-analyze-rule">Error-count rule</button>
   <div id="analyze-status" class="status"></div>
@@ -104,6 +105,7 @@ async function runAnalysis(detector) {
   }
 }
 
+document.getElementById('btn-analyze-boost').addEventListener('click', () => runAnalysis('boosting'));
 document.getElementById('btn-analyze').addEventListener('click', () => runAnalysis('isolation_forest'));
 document.getElementById('btn-analyze-rule').addEventListener('click', () => runAnalysis('error_count'));
 

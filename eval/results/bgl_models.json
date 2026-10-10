@@ -1,0 +1,170 @@
+{
+  "node card, 60-min window, alert in this window": {
+    "train_units": 147013,
+    "test_units": 97470,
+    "test_positive_rate": 0.204,
+    "methods": {
+      "random": {
+        "AUROC": 0.501,
+        "AP": 0.205,
+        "AUROC_per_window": 0.5
+      },
+      "Isolation Forest (unsupervised)": {
+        "AUROC": 0.598,
+        "AP": 0.255,
+        "AUROC_per_window": 0.735
+      },
+      "error-class count (rule)": {
+        "AUROC": 0.857,
+        "AP": 0.5,
+        "AUROC_per_window": 0.97
+      },
+      "logistic regression (supervised)": {
+        "AUROC": 0.917,
+        "AP": 0.615,
+        "AUROC_per_window": 0.994
+      },
+      "gradient boosting (supervised)": {
+        "AUROC": 0.927,
+        "AP": 0.719,
+        "AUROC_per_window": 0.988
+      },
+      "hierarchical: rule gate + boosting": {
+        "AUROC": 0.923,
+        "AP": 0.658,
+        "AUROC_per_window": 0.976
+      },
+      "ensemble: rank average of rule, boosting, logistic, forest": {
+        "AUROC": 0.918,
+        "AP": 0.645,
+        "AUROC_per_window": 0.998
+      }
+    }
+  },
+  "node card, 60-min window, alert in the NEXT window (early warning)": {
+    "train_units": 26192,
+    "test_units": 17423,
+    "test_positive_rate": 0.175,
+    "methods": {
+      "random": {
+        "AUROC": 0.504,
+        "AP": 0.181,
+        "AUROC_per_window": 0.554
+      },
+      "Isolation Forest (unsupervised)": {
+        "AUROC": 0.423,
+        "AP": 0.171,
+        "AUROC_per_window": 0.402
+      },
+      "error-class count (rule)": {
+        "AUROC": 0.514,
+        "AP": 0.174,
+        "AUROC_per_window": 0.585
+      },
+      "logistic regression (supervised)": {
+        "AUROC": 0.61,
+        "AP": 0.222,
+        "AUROC_per_window": 0.647
+      },
+      "gradient boosting (supervised)": {
+        "AUROC": 0.617,
+        "AP": 0.252,
+        "AUROC_per_window": 0.61
+      },
+      "hierarchical: rule gate + boosting": {
+        "AUROC": 0.642,
+        "AP": 0.248,
+        "AUROC_per_window": 0.674
+      },
+      "ensemble: rank average of rule, boosting, logistic, forest": {
+        "AUROC": 0.655,
+        "AP": 0.243,
+        "AUROC_per_window": 0.77
+      }
+    }
+  },
+  "midplane, 10-min window, alert in this window": {
+    "train_units": 63928,
+    "test_units": 42508,
+    "test_positive_rate": 0.142,
+    "methods": {
+      "random": {
+        "AUROC": 0.506,
+        "AP": 0.145,
+        "AUROC_per_window": 0.508
+      },
+      "Isolation Forest (unsupervised)": {
+        "AUROC": 0.776,
+        "AP": 0.256,
+        "AUROC_per_window": 0.793
+      },
+      "error-class count (rule)": {
+        "AUROC": 0.914,
+        "AP": 0.492,
+        "AUROC_per_window": 0.965
+      },
+      "logistic regression (supervised)": {
+        "AUROC": 0.957,
+        "AP": 0.709,
+        "AUROC_per_window": 0.986
+      },
+      "gradient boosting (supervised)": {
+        "AUROC": 0.973,
+        "AP": 0.814,
+        "AUROC_per_window": 0.992
+      },
+      "hierarchical: rule gate + boosting": {
+        "AUROC": 0.974,
+        "AP": 0.82,
+        "AUROC_per_window": 0.989
+      },
+      "ensemble: rank average of rule, boosting, logistic, forest": {
+        "AUROC": 0.96,
+        "AP": 0.69,
+        "AUROC_per_window": 0.997
+      }
+    }
+  },
+  "midplane, 10-min window, alert in the NEXT window (early warning)": {
+    "train_units": 11220,
+    "test_units": 7433,
+    "test_positive_rate": 0.02,
+    "methods": {
+      "random": {
+        "AUROC": 0.549,
+        "AP": 0.023,
+        "AUROC_per_window": 0.623
+      },
+      "Isolation Forest (unsupervised)": {
+        "AUROC": 0.252,
+        "AP": 0.013,
+        "AUROC_per_window": 0.474
+      },
+      "error-class count (rule)": {
+        "AUROC": 0.438,
+        "AP": 0.019,
+        "AUROC_per_window": 0.5
+      },
+      "logistic regression (supervised)": {
+        "AUROC": 0.506,
+        "AP": 0.019,
+        "AUROC_per_window": 0.548
+      },
+      "gradient boosting (supervised)": {
+        "AUROC": 0.68,
+        "AP": 0.031,
+        "AUROC_per_window": 0.521
+      },
+      "hierarchical: rule gate + boosting": {
+        "AUROC": 0.588,
+        "AP": 0.023,
+        "AUROC_per_window": 0.409
+      },
+      "ensemble: rank average of rule, boosting, logistic, forest": {
+        "AUROC": 0.521,
+        "AP": 0.02,
+        "AUROC_per_window": 0.523
+      }
+    }
+  }
+}
