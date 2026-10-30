@@ -105,3 +105,38 @@ def test_analyze_flags_the_node_card_full_of_fatal_lines_and_reports_the_label_o
 def test_unknown_detector_is_a_client_error(client):
     c, _ = client
     assert c.post("/analyze?detector=magic", headers={"X-API-Key": "secret-key"}).status_code == 400
+
+
+def test_init_db_adds_the_new_columns_to_a_table_made_by_an_older_version(monkeypatch):
+    for k, v in ENV.items():
+        monkeypatch.setenv(k, v)
+    import psycopg2
+
+    executed = []
+
+    class RecordingCursor:
+        def execute(self, sql, params=None):
+            executed.append(" ".join(sql.split()))
+
+        def close(self):
+            pass
+
+    class RecordingConn:
+        def cursor(self, **_):
+            return RecordingCursor()
+
+        def commit(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(psycopg2, "connect", lambda **_: RecordingConn())
+    sys.modules.pop("app", None)
+    app = importlib.import_module("app")
+    executed.clear()
+    app.init_db()
+    sql = " ".join(executed)
+    assert "CREATE TABLE IF NOT EXISTS anomalies" in sql
+    for column in ("detector", "counts", "had_alert", "window_end"):
+        assert f"ADD COLUMN IF NOT EXISTS {column}" in sql

@@ -64,6 +64,12 @@ def init_db(retries=20, delay_seconds=3):
                     window_end TIMESTAMPTZ,
                     detected_at TIMESTAMPTZ DEFAULT now()
                 );
+                -- a table made by an older version keeps its old columns, so add the new ones
+                ALTER TABLE anomalies
+                    ADD COLUMN IF NOT EXISTS detector TEXT NOT NULL DEFAULT 'isolation_forest',
+                    ADD COLUMN IF NOT EXISTS counts JSONB,
+                    ADD COLUMN IF NOT EXISTS had_alert BOOLEAN,
+                    ADD COLUMN IF NOT EXISTS window_end TIMESTAMPTZ;
                 """
             )
             conn.commit()
