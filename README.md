@@ -62,4 +62,6 @@ Isolation Forest flagged 6 (3 with a label) and the error-count rule flagged non
 The images on Docker Hub (`sriya13/*:1.0`) still predate this version, so rebuild and push them before deploying (`DEPLOY.md`).
 Still missing: TLS between services and per-user authentication.
 
+Also checked on AWS (30 October 2026): one EC2 instance running Ubuntu with k3s, a small Kubernetes, with the three images built on the instance from this repository. `deploy/aws/user-data.sh` sets it up and writes `/opt/netops-verify.sh`, which runs the checks. All four pods ran, a call to a service without the API key got 401, the real 4,000-line sample loaded, and the three detectors gave the same results as on Docker Desktop (boosting flagged 162 node cards, all 162 with an alert label; Isolation Forest flagged 6, with 3 labelled; the error-count rule flagged none). The database kept all 4,000 rows after its pod was deleted, and the log service scaled to 3 copies; it restarted once when the database pod was deleted and recovered by itself. This is one machine, so there is no high availability, and the autoscalers were not load-tested.
+
 Data: Oliner and Stearley, "What Supercomputers Say", DSN 2007; Loghub (Zhu et al., ISSRE 2023), free for research use.

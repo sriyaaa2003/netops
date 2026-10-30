@@ -89,3 +89,7 @@ new pod, confirm row counts are unchanged.
 
 Scaling: `kubectl -n netops scale deployment log-service --replicas=3`,
 confirm the extra pods come up independently of everything else.
+
+## 6. On AWS (EC2 with k3s)
+
+`deploy/aws/user-data.sh` sets up Ubuntu 24.04 with k3s on one EC2 instance, builds the three images from this repository at a pinned commit, creates the two secrets with random values and applies the manifests. Paste it into the User data box when launching the instance (t3.medium or larger, 20 GiB disk, a security group that allows HTTP only from your own IP). When `/var/log/netops-setup.log` ends with `NETOPS SETUP DONE`, run `sudo bash /opt/netops-verify.sh` on the instance for the checks. Terminate the instance when you are finished, to stop the charges.
