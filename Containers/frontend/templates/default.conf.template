@@ -22,24 +22,26 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # /api/logs and /api/logs/:id both work: nginx appends whatever
-    # follows the matched prefix onto the proxy_pass path.
-    location /api/logs {
-        proxy_pass http://$log_service:4000/logs;
+    # Because proxy_pass uses a variable, nginx sends exactly the URI written
+    # here and does not append the rest of the request, so the query string
+    # ($is_args$args, for ?limit= and ?detector=) is added by hand and the
+    # /api/logs/:id part is captured by the regex.
+    location ~ ^/api/logs(?<rest>/.*)?$ {
+        proxy_pass http://$log_service:4000/logs$rest$is_args$args;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-API-Key ${API_KEY};
     }
 
     location /api/analyze {
-        proxy_pass http://$anomaly_service:5001/analyze;
+        proxy_pass http://$anomaly_service:5001/analyze$is_args$args;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-API-Key ${API_KEY};
     }
 
     location /api/anomalies {
-        proxy_pass http://$anomaly_service:5001/anomalies;
+        proxy_pass http://$anomaly_service:5001/anomalies$is_args$args;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-API-Key ${API_KEY};
