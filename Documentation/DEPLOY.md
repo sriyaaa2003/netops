@@ -1,6 +1,6 @@
 # Deploying NetOps
 
-Tested against Docker Desktop's Kubernetes (context `docker-desktop`).
+Verified on Docker Desktop's Kubernetes (context `docker-desktop`) on 30 October 2026, with images built from this repository.
 
  1. Images
 
@@ -78,6 +78,11 @@ curl http://localhost/api/logs?limit=1
 curl -X POST http://localhost/api/analyze
 curl http://localhost/api/anomalies
 ```
+
+Load the real sample first (the web page's first button does this), then pick a detector with
+`curl -X POST "http://localhost/api/analyze?detector=error_count"` (or `isolation_forest`, `boosting`). The reply names
+the detector that ran. A request without the `X-API-Key` header sent straight to a service (not through the frontend)
+returns 401.
 
 Persistence: `kubectl -n netops delete pod -l app=postgres`, wait for the
 new pod, confirm row counts are unchanged.

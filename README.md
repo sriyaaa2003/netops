@@ -44,7 +44,7 @@ systems need retraining (`eval/train_service_model.py`). The earlier random-wind
 ```bash
 # unit tests
 cd Containers/log-service && npm test                     # 4 tests: the BGL line parser
-cd Containers/anomaly-service && pip install -r requirements.txt pytest && pytest   # 14 tests: detectors, features and HTTP layer with fakes
+cd Containers/anomaly-service && pip install -r requirements.txt pytest && pytest   # 15 tests: detectors, features, table upgrade and HTTP layer with fakes
 # reproduce the table (needs BGL.log from https://zenodo.org/records/8196385)
 python eval/bgl_models.py path/to/BGL.log --cache bgl_full.parquet      # all models, time-ordered split
 python eval/train_service_model.py path/to/BGL.log --cache bgl_full.parquet   # retrain the shipped model
@@ -52,7 +52,14 @@ python eval/train_service_model.py path/to/BGL.log --cache bgl_full.parquet   # 
 ```
 
 The UI replays a 4,000-line real excerpt (`Containers/frontend/bgl_sample.log`: the first window in the log with 8% to 20% alert lines)
-and shows each flagged node card with whether it carried an alert label. Not verified on a cluster: the services were tested with fakes
-for Postgres and each other, and the images in `DEPLOY.md` need rebuilding. Still missing: TLS between services and per-user authentication.
+and shows each flagged node card with whether it carried an alert label.
+
+Checked on a Kubernetes cluster (Docker Desktop, 30 October 2026) with images built from this repository. All four pods ran with no restarts,
+the services refused calls without the API key, and the page loaded the 4,000 lines (321 with an alert label, 268 node cards). On the
+one-hour analysis window (165 node cards, 162 with an alert label), gradient boosting flagged 162 node cards, all 162 with an alert label,
+Isolation Forest flagged 6 (3 with a label) and the error-count rule flagged none. Deleting the Postgres pod kept every row, and scaling
+`log-service` to 3 replicas worked with the other services unchanged. The autoscalers report live CPU but have not been load-tested.
+The images on Docker Hub (`sriya13/*:1.0`) still predate this version, so rebuild and push them before deploying (`DEPLOY.md`).
+Still missing: TLS between services and per-user authentication.
 
 Data: Oliner and Stearley, "What Supercomputers Say", DSN 2007; Loghub (Zhu et al., ISSRE 2023), free for research use.
